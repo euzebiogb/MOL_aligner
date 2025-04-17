@@ -95,15 +95,6 @@ LSalign_PC_Score: The PC-score of the alignment (higher is better).
 
 LSalign_RMSD: The RMSD calculated between the aligned query atoms and the corresponding reference atoms based on the final alignment mapping.
 
-Best_Query_Conf_ID: The internal conformer ID (from the pool generated/aligned) that resulted in this best alignment.
-
-_Name (Title): Modified to include alignment info (e.g., LSaligned_QueryName_ConfX_PC_Y_RMSD_Z).
-
-b) Visualization HTML (*_view.html)
-If py3Dmol is installed, an HTML file named <output_basename>_view.html will be automatically generated in the same directory as the output SDF.
-
-This file provides an interactive 3D view of the reference molecule (cyan) superimposed with the best-aligned query molecule (magenta). Open this file in a web browser.
-
 ## 7. Example Workflow
 Prepare Inputs: Ensure you have reference.sdf and query.sdf with 3D coordinates.
 
