@@ -1,4 +1,4 @@
-# User Guide: Flexible Molecular Aligner (LS-align based)
+# User Guide: Flexible Molecular Aligner ([LS-align](https://academic.oup.com/bioinformatics/article/34/13/2209/4860363) based)
 
 Please cite: 10.1093/bioinformatics/bty081 - LS-align: an atom-level, flexible ligand structural alignment algorithm for high-throughput virtual screening 
 Zi Liu, Dong-Jun Yu, and Yang Zhang,
