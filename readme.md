@@ -1,4 +1,4 @@
-# User Guide: Flexible Molecular Aligner (LS-align based)
+# User Guide: Flexible Molecular Aligner (LS-align based - 10.1093/bioinformatics/bty081)
 
 ## 1. Introduction
 
@@ -16,7 +16,6 @@ This script requires the following Python libraries:
 
 You can typically install these using Conda (recommended for RDKit):
 
-```bash
 conda install -c conda-forge rdkit numpy scipy
 
 Or, if you manage RDKit installation separately, you might use pip for NumPy and SciPy:
@@ -29,7 +28,7 @@ py3Dmol: To automatically generate an HTML file visualizing the alignment.
 
 pip install py3Dmol
 
-3. Usage
+## 3. Usage
 The script is run from the command line.
 
 Basic Syntax:
@@ -46,7 +45,7 @@ Arguments:
 
 --num_conformers <N>: Optional. (Default: 20) Specifies the number of initial conformers to generate using RDKit's ETKDG algorithm before combinatorial nitrogen inversion is applied in flexible mode. Increasing this number can improve sampling of the initial conformational space (especially for rings) but also increases computation time significantly, as each initial conformer seeds the generation of all nitrogen inversion combinations. This argument has no effect in rigid mode.
 
-4. Alignment Modes
+## 4. Alignment Modes
 a) Rigid Alignment (Default)
 If the --flexible flag is not provided, the script performs a rigid alignment. It takes the input conformer from the query file and aligns it to the reference molecule's conformer.
 
@@ -75,12 +74,12 @@ python aligner_flex.py -f template.pdb -i query.sdf -o aligned_flexible.sdf --fl
 
 (This will generate 30 initial ETKDG conformers, then create all N-inversion combinations for each, optimize them, align all successful ones, and save the best.)
 
-5. Input Files
+## 5. Input Files
 Provide reference and query molecules in standard formats like SDF, MOL, or PDB.
 
 The script expects 3D coordinates. It will attempt to add hydrogens and generate an initial 3D conformer if one is missing, but providing good starting 3D structures is recommended.
 
-6. Output Files
+## 6. Output Files
 a) Main Output SDF (-o <file>)
 An SDF file containing the single best-aligned conformer of the query molecule (based on the highest PC-score achieved).
 
@@ -99,7 +98,7 @@ If py3Dmol is installed, an HTML file named <output_basename>_view.html will be 
 
 This file provides an interactive 3D view of the reference molecule (cyan) superimposed with the best-aligned query molecule (magenta). Open this file in a web browser.
 
-7. Example Workflow
+## 7. Example Workflow
 Prepare Inputs: Ensure you have reference.sdf and query.sdf with 3D coordinates.
 
 Install Dependencies: Make sure RDKit, NumPy, and SciPy are installed.
@@ -109,6 +108,12 @@ Run Alignment (Flexible):
 python aligner_flex.py -f reference.sdf -i query.sdf -o query_aligned.sdf --flexible
 
 Check Output:
+
+Examine the console output for progress, PC-scores, RMSD values, and total time.
+
+Inspect the generated query_aligned.sdf file in a molecular viewer. Check the added properties.
+
+If py3Dmol is installed, open query_aligned_view.html in a browser to visualize the superposition.
 
 Examine the console output for progress, PC-scores, RMSD values, and total time.
 
