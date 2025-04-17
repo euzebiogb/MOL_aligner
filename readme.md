@@ -22,11 +22,11 @@ This script requires the following Python libraries:
 
 You can typically install these using Conda (recommended for RDKit):
 
-conda install -c conda-forge rdkit numpy scipy
+`conda install -c conda-forge rdkit numpy scipy`
 
 Or, if you manage RDKit installation separately, you might use pip for NumPy and SciPy:
 
-pip install numpy scipy
+`pip install numpy scipy`
 
 (Optional for Visualization):
 
@@ -38,7 +38,7 @@ pip install py3Dmol
 The script is run from the command line.
 
 Basic Syntax:
-python aligner_flex.py -f <reference_file> -i <query_file> -o <output_file> [options]
+`python aligner_flex.py -f <reference_file> -i <query_file> -o <output_file> [options]`
 
 Arguments:
 -f, --reference <file>: Required. Path to the reference (template) molecule file. Supported formats: SDF, MOL, PDB.
@@ -57,7 +57,7 @@ If the --flexible flag is not provided, the script performs a rigid alignment. I
 
 Example:
 
-python aligner_flex.py -f template.sdf -i query.mol -o aligned_rigid.sdf
+`python aligner_flex.py -f template.sdf -i query.mol -o aligned_rigid.sdf`
 
 b) Flexible Alignment (--flexible)
 If the --flexible flag is provided, the script performs a comprehensive flexible alignment:
@@ -76,7 +76,7 @@ Warning: This mode can be computationally very expensive, especially for molecul
 
 Example:
 
-python aligner_flex.py -f template.pdb -i query.sdf -o aligned_flexible.sdf --flexible --num_conformers 30
+`python aligner_flex.py -f template.pdb -i query.sdf -o aligned_flexible.sdf --flexible --num_conformers 30`
 
 (This will generate 30 initial ETKDG conformers, then create all N-inversion combinations for each, optimize them, align all successful ones, and save the best.)
 
@@ -102,7 +102,7 @@ Install Dependencies: Make sure RDKit, NumPy, and SciPy are installed.
 
 Run Alignment (Flexible):
 
-python aligner_flex.py -f reference.sdf -i query.sdf -o query_aligned.sdf --flexible
+`python aligner_flex.py -f reference.sdf -i query.sdf -o query_aligned.sdf --flexible`
 
 Check Output:
 
