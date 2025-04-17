@@ -116,4 +116,4 @@ Examine the console output for progress, PC-scores, RMSD values, and total time.
 
 Inspect the generated query_aligned.sdf file in a molecular viewer. Check the added properties.
 
-If py3Dmol is installed, open query_aligned_view.html in a browser to visualize the superposition.
+
