@@ -110,7 +110,7 @@ Examine the console output for progress, PC-scores, RMSD values, and total time.
 
 Inspect the generated query_aligned.sdf file in a molecular viewer. Check the added properties.
 
-I use UCSF Chimera to see the results. [UCSF Chimera](https://www.cgl.ucsf.edu/chimera/)
+I usually use [UCSF Chimera](https://www.cgl.ucsf.edu/chimera/) to see the results. 
 
 Examine the console output for progress, PC-scores, RMSD values, and total time.
 
