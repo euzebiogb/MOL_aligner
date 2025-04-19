@@ -60,6 +60,7 @@ Example:
 `python aligner_flex.py -f template.sdf -i query.mol -o aligned_rigid.sdf`
 
 AI version - PyTorch
+
 `python aligner_flex_ai.py -f drop_ref.sdf -i drop_query.sdf -o drop_ali_ai.sdf --hybrid --num_conformers 50 --ai_weight 0.6` 
 
 b) Flexible Alignment (--flexible)
