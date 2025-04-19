@@ -58,7 +58,9 @@ If the --flexible flag is not provided, the script performs a rigid alignment. I
 Example:
 
 `python aligner_flex.py -f template.sdf -i query.mol -o aligned_rigid.sdf`
-`python aligner_flex_ai.py -f drop_ref.sdf -i drop_query.sdf -o drop_ali_ai.sdf --hybrid --num_conformers 50 --ai_weight 0.6` (AI version)
+
+AI version - PyTorch
+`python aligner_flex_ai.py -f drop_ref.sdf -i drop_query.sdf -o drop_ali_ai.sdf --hybrid --num_conformers 50 --ai_weight 0.6` 
 
 b) Flexible Alignment (--flexible)
 If the --flexible flag is provided, the script performs a comprehensive flexible alignment:
