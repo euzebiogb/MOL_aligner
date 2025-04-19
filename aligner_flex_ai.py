@@ -315,18 +315,25 @@ def optimize_conformers(mol, max_iter=200, mmffVariant='MMFF94s'):
         results = AllChem.MMFFOptimizeMoleculeConfs(mol, maxIters=max_iter, mmffVariant=mmffVariant)
         # results is a list of tuples (not_converged, energy)
         num_converged = 0
-        for i, res in enumerate(results):
+        # Use original conformer IDs before optimization for energy mapping
+        original_ids = [conf.GetId() for conf in mol.GetConformers()]
+        energies_dict = {}
+        for conf_id, res in zip(original_ids, results):
              if res[0] == 0: # Converged
-                 energies.append(res[1])
+                 energies_dict[conf_id] = res[1]
                  num_converged += 1
              else:
                  # Assign a high energy or NaN to non-converged conformers
-                 energies.append(np.inf) # Or np.nan
-                 print(f"AVISO (Optimize): Confôrmero ID {i} não convergiu na otimização.")
+                 energies_dict[conf_id] = np.inf # Or np.nan
+                 print(f"AVISO (Optimize): Confôrmero ID {conf_id} não convergiu na otimização.")
+
+        # Recreate energies list in the current order of conformers
+        energies = [energies_dict.get(conf.GetId(), np.inf) for conf in mol.GetConformers()]
         print(f"INFO (Optimize): Otimização concluída. {num_converged}/{len(results)} confôrmeros convergiram.")
+
     except Exception as e:
         print(f"ERRO (Optimize): Falha durante a otimização MMFF: {e}. Retornando molécula não otimizada.")
-        # Return original molecule and empty energies if optimization fails globally
+        # Return original molecule and infinite energies if optimization fails globally
         return mol, [np.inf] * mol.GetNumConformers()
 
     return mol, energies
@@ -335,100 +342,116 @@ def optimize_conformers(mol, max_iter=200, mmffVariant='MMFF94s'):
 def filter_conformers(mol, energies, max_energy=100.0, rmsd_thresh=1.0):
     """
     Filters conformers based on energy and RMSD diversity.
-    Uses scipy.spatial.distance.cdist for RMSD calculation between coordinate sets.
+    Uses pairwise RDKit RMSD calculation for diversity checking.
     """
     if mol is None or mol.GetNumConformers() == 0:
+        print("INFO (Filter): Molécula vazia ou sem confôrmeros para filtrar.")
         return mol
 
     num_initial_confs = mol.GetNumConformers()
     if len(energies) != num_initial_confs:
-        print("AVISO (Filter): Disparidade entre número de confôrmeros e energias. Pulando filtragem.")
+        print(f"AVISO (Filter): Disparidade entre número de confôrmeros ({num_initial_confs}) e energias ({len(energies)}). Pulando filtragem.")
         return mol
 
+    # Create pairs of (conformer, energy, original_id)
+    conf_data = []
+    for conf in mol.GetConformers():
+         conf_id = conf.GetId()
+         # Find the corresponding energy, default to infinity if not found (shouldn't happen with fix above)
+         energy = energies[conf_id] if conf_id < len(energies) else np.inf
+         conf_data.append((conf, energy, conf_id))
+
+
     # 1. Energy filtering
-    energy_threshold = min(energies) + max_energy if energies else 0 # Relative energy window
-    valid_ids_energy = [
-        conf.GetId() for conf, energy in zip(mol.GetConformers(), energies)
-        if energy <= energy_threshold and np.isfinite(energy) # Check for finite energy within window
-    ]
+    finite_energies = [e for e in energies if np.isfinite(e)]
+    if not finite_energies:
+        print("AVISO (Filter): Nenhum confôrmero com energia finita encontrado. Pulando filtragem de energia.")
+        # Keep all conformers if no finite energies exist? Or return empty? Let's keep them for now.
+        valid_confs_energy = conf_data
+    else:
+        min_finite_energy = min(finite_energies)
+        energy_threshold = min_finite_energy + max_energy
+        valid_confs_energy = [
+            data for data in conf_data if data[1] <= energy_threshold and np.isfinite(data[1])
+        ]
 
-    if not valid_ids_energy:
-        print("AVISO (Filter): Nenhum confôrmero passou na filtragem de energia.")
-        # Return an empty molecule or the one with the lowest energy? Return empty for now.
-        new_mol = Chem.Mol(mol)
-        new_mol.RemoveAllConformers()
-        return new_mol
+        if not valid_confs_energy:
+            print(f"AVISO (Filter): Nenhum confôrmero passou na filtragem de energia (E <= {energy_threshold:.2f}).")
+            new_mol = Chem.Mol(mol)
+            new_mol.RemoveAllConformers()
+            return new_mol
 
-    print(f"INFO (Filter): {len(valid_ids_energy)}/{num_initial_confs} confôrmeros passaram no filtro de energia (E <= min(E) + {max_energy:.2f}).")
+        print(f"INFO (Filter): {len(valid_confs_energy)}/{num_initial_confs} confôrmeros passaram no filtro de energia (E <= min(E) + {max_energy:.2f}).")
 
     # Sort by energy to keep lower energy conformers first during RMSD check
-    valid_confs_energy = sorted(
-        [(mol.GetConformer(cid), energies[cid]) for cid in valid_ids_energy],
-        key=lambda x: x[1] # Sort by energy
-    )
+    valid_confs_energy.sort(key=lambda x: x[1]) # Sort by energy (index 1)
 
     # 2. RMSD diversity filtering
     heavy_atom_indices = get_heavy_atom_indices(mol) # Use heavy atoms for RMSD
     if not heavy_atom_indices:
          print("AVISO (Filter): Nenhum átomo pesado encontrado para cálculo de RMSD. Usando todos os átomos.")
          heavy_atom_indices = list(range(mol.GetNumAtoms())) # Fallback to all atoms
+         if not heavy_atom_indices: # Handle molecule with zero atoms
+              print("ERRO (Filter): Molécula sem átomos para calcular RMSD.")
+              new_mol = Chem.Mol(mol)
+              new_mol.RemoveAllConformers()
+              return new_mol
 
-    filtered_confs_final = []
-    filtered_coords_list = [] # Store coordinate arrays of kept conformers
+
+    filtered_confs_final_data = [] # Store tuples (conf, energy, id) of kept conformers
 
     print(f"INFO (Filter): Aplicando filtro de diversidade RMSD (threshold={rmsd_thresh:.2f} Å)...")
-    for conf, energy in valid_confs_energy:
-        coords = conf.GetPositions()[heavy_atom_indices] # Get heavy atom coordinates
-
+    for conf_tuple in valid_confs_energy:
+        current_conf = conf_tuple[0]
         is_diverse = True
-        if filtered_coords_list: # Only check if we already have kept conformers
-            # Calculate RMSD against all previously kept conformers
-            # cdist computes pairwise distances, not RMSD directly.
-            # We need pairwise RMSD. RDKit's AlignMol is better suited but slower for many pairs.
-            # Let's use a simplified check with cdist (average distance) or implement pairwise RMSD.
 
-            # Option A: Simplified check using average distance (less accurate than RMSD)
-            # distances = cdist([coords.flatten()], [f.flatten() for f in filtered_coords_list])
-            # min_dist = distances.min() if distances.size > 0 else np.inf
-            # if min_dist < some_threshold: # Threshold needs tuning
-            #     is_diverse = False
+        # Create a temporary molecule for the current conformer for alignment
+        temp_mol_current = Chem.Mol(mol)
+        temp_mol_current.RemoveAllConformers()
+        temp_mol_current.AddConformer(current_conf, assignId=True) # Use original ID temporarily
 
-            # Option B: Calculate pairwise RMSD properly (more accurate but slower)
-            min_rmsd = np.inf
-            temp_mol_conf = Chem.Mol(mol) # Create temp mol for alignment
-            temp_mol_conf.RemoveAllConformers()
-            temp_mol_conf.AddConformer(conf, assignId=True)
+        min_rmsd = np.inf
+        for kept_conf_tuple in filtered_confs_final_data:
+            kept_conf = kept_conf_tuple[0]
+            # Create a temporary molecule for the kept conformer
+            temp_mol_kept = Chem.Mol(mol)
+            temp_mol_kept.RemoveAllConformers()
+            temp_mol_kept.AddConformer(kept_conf, assignId=True) # Use original ID temporarily
 
-            for kept_conf in filtered_confs_final:
-                temp_mol_kept = Chem.Mol(mol)
-                temp_mol_kept.RemoveAllConformers()
-                temp_mol_kept.AddConformer(kept_conf, assignId=True)
-                try:
-                    # Align and get RMSD using heavy atoms
-                    atom_map = list(zip(heavy_atom_indices, heavy_atom_indices))
-                    rmsd = rdMolAlign.AlignMol(temp_mol_conf, temp_mol_kept, atomMap=atom_map)
-                    min_rmsd = min(min_rmsd, rmsd)
-                except Exception as e:
-                    print(f"AVISO (Filter): Falha no cálculo de RMSD pairwise: {e}")
-                    # If RMSD fails, maybe keep the conformer? Or discard? Let's be conservative and assume not diverse.
-                    # is_diverse = False # Or keep it? Let's keep it if RMSD fails.
-                    pass # Keep is_diverse = True
+            try:
+                # Align and get RMSD using heavy atoms
+                # Map heavy atom indices from current to kept (they are the same mol structure)
+                atom_map = list(zip(heavy_atom_indices, heavy_atom_indices))
+                # Align current onto kept and calculate RMSD
+                rmsd = rdMolAlign.AlignMol(temp_mol_current, temp_mol_kept, atomMap=atom_map)
+                min_rmsd = min(min_rmsd, rmsd)
+            except RuntimeError as e: # Catch potential RDKit runtime errors during alignment
+                 print(f"AVISO (Filter): Falha no cálculo de RMSD pairwise entre conf {current_conf.GetId()} e {kept_conf.GetId()}: {e}")
+                 # If RMSD fails, should we consider it diverse or not?
+                 # Let's assume it's NOT diverse if alignment fails, to be conservative.
+                 # is_diverse = False
+                 # break # Stop checking against other kept conformers for this one
+                 pass # Or assume diverse if error occurs? Let's assume diverse for now.
+            except Exception as e: # Catch any other unexpected errors
+                 print(f"ERRO INESPERADO (Filter): Falha no cálculo de RMSD pairwise: {e}")
+                 pass # Assume diverse on unexpected error
 
             if min_rmsd < rmsd_thresh:
                 is_diverse = False
+                break # Stop checking this conformer if it's too similar to one already kept
 
         if is_diverse:
-            filtered_confs_final.append(conf)
-            filtered_coords_list.append(coords) # Store coords for next comparisons (if using cdist)
+            filtered_confs_final_data.append(conf_tuple) # Keep the tuple (conf, energy, id)
 
-    print(f"INFO (Filter): {len(filtered_confs_final)} confôrmeros mantidos após filtro de diversidade.")
+    print(f"INFO (Filter): {len(filtered_confs_final_data)} confôrmeros mantidos após filtro de diversidade.")
 
     # Create final molecule with filtered conformers
     final_mol = Chem.Mol(mol)
     final_mol.RemoveAllConformers()
-    for i, conf in enumerate(filtered_confs_final):
-        conf.SetId(i) # Reset IDs sequentially
-        final_mol.AddConformer(conf, assignId=False)
+    for i, conf_tuple in enumerate(filtered_confs_final_data):
+        conf = conf_tuple[0]
+        conf.SetId(i) # Reset IDs sequentially from 0
+        final_mol.AddConformer(conf, assignId=False) # Use the new sequential ID
 
     return final_mol
 
@@ -515,15 +538,17 @@ def generate_conformers_hybrid(mol, num_confs=20,
         return None
 
     # --- 4. Optimize ---
+    # Optimize returns the molecule potentially modified in-place and energies
     optimized_mol, energies = optimize_conformers(combined_mol, mmff_iter)
 
     # --- 5. Filter ---
+    # Pass the potentially modified molecule and its energies to filter
     final_mol = filter_conformers(optimized_mol, energies, max_energy, rmsd_thresh)
 
     if final_mol is None or final_mol.GetNumConformers() == 0:
          print("AVISO: Nenhum confôrmero restou após a filtragem final.")
          # Return an empty mol object instead of None if filtering removed everything
-         if final_mol is None:
+         if final_mol is None: # Should not happen if filter_conformers returns empty mol
              final_mol = Chem.Mol(mol)
              final_mol.RemoveAllConformers()
          return final_mol # Return empty molecule
@@ -994,31 +1019,32 @@ def align_single_conformer_ls_align(query_mol, template_mol, query_conf_id=-1):
     # Apply the transformation IN-PLACE to the conformer in the copied molecule
     TransformConformer(final_conf, transform_matrix)
 
-    # --- Calculate Final RMSD using the BEST alignment map ---
+    # --- Calculate Final RMSD using the BEST alignment map (Manual Method) ---
     # Get the *original* atom indices corresponding to the best heavy atom alignment
     q_indices_final_map = [q_heavy_indices[pair[0]] for pair in best_alignment_iter_pairs]
     t_indices_final_map = [t_heavy_indices[pair[1]] for pair in best_alignment_iter_pairs]
 
     final_rmsd = np.nan
     if len(q_indices_final_map) > 0:
+        # Use manual calculation directly to avoid rdMolAlign.CalcRMS warning
         try:
-            # Use RDKit's AlignMol to calculate RMSD based on the specific atom map
-            # Provide the map explicitly for accuracy based on the LS-align result
-            atom_map = list(zip(q_indices_final_map, t_indices_final_map))
-            # AlignMol calculates RMSD *without* further alignment if map is given
-            # We want RMSD between the already transformed query and the original template
-            final_rmsd = rdMolAlign.CalcRMS(final_query_mol, template_mol,
-                                            confId=final_conf.GetId(), refConfId=0,
-                                            map=atom_map)
-            # Note: rdMolAlign.AlignMol re-aligns, CalcRMS just calculates based on map.
-        except Exception as e_rmsd:
-            print(f"AVISO (Align): Falha no cálculo do RMSD final com rdMolAlign: {e_rmsd}. Calculando manualmente.")
-            # Manual calculation as fallback
             q_coords_final_aligned = final_conf.GetPositions()[q_indices_final_map]
             t_coords_original_aligned = t_coords_all[t_indices_final_map] # Use original template coords
+
             if len(q_coords_final_aligned) == len(t_coords_original_aligned):
                  diff = q_coords_final_aligned - t_coords_original_aligned
                  final_rmsd = np.sqrt(np.sum(diff * diff) / len(q_coords_final_aligned))
+            else:
+                 # This case should ideally not happen if maps are correct
+                 print("AVISO (Align): Disparidade no número de átomos mapeados para cálculo manual de RMSD.")
+                 final_rmsd = np.nan # Set RMSD to NaN if calculation is not possible
+        except IndexError as e_idx:
+             print(f"ERRO (Align): Índice fora dos limites durante cálculo manual de RMSD: {e_idx}")
+             final_rmsd = np.nan
+        except Exception as e_manual:
+             # Catch any other unexpected error during manual calculation
+             print(f"ERRO (Align): Exceção inesperada durante cálculo manual de RMSD: {e_manual}")
+             final_rmsd = np.nan
 
     # Return the molecule containing the single transformed conformer,
     # the best PC-score achieved, and the final RMSD.
@@ -1142,12 +1168,15 @@ if __name__ == "__main__":
 
         # Verifica se o alinhamento foi bem-sucedido
         if aligned_mol_single_conf is not None and not np.isnan(pc_score_conf):
-            print(f"Resultado Conf. {i+1}: PC-score={pc_score_conf:.6f}, RMSD={rmsd_conf:.4f} Å")
+            # Only print RMSD if it was successfully calculated
+            rmsd_str_conf = f"{rmsd_conf:.4f} Å" if not np.isnan(rmsd_conf) else "N/A"
+            print(f"Resultado Conf. {i+1}: PC-score={pc_score_conf:.6f}, RMSD={rmsd_str_conf}")
+
             # Compara com o melhor resultado global encontrado até agora
             # LS-align maximiza PC-score
             if pc_score_conf > best_pc_score_final:
                 best_pc_score_final = pc_score_conf
-                best_rmsd_final = rmsd_conf
+                best_rmsd_final = rmsd_conf # Store the calculated RMSD (can be NaN)
                 # Guarda a molécula que contém APENAS este melhor confôrmero alinhado
                 # A função align_single_conformer_ls_align já retorna uma cópia
                 # com apenas o confôrmero alinhado.
@@ -1219,3 +1248,4 @@ if __name__ == "__main__":
          print("\nERRO: Alinhamento LS-align falhou ou nenhum confôrmero válido foi encontrado/gerado.")
          print("Nenhuma molécula de saída foi gerada.")
          exit(1) # Sai com erro se nenhum resultado foi obtido
+
